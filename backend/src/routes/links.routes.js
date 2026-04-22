@@ -16,6 +16,13 @@ const generateShortId = (length = 6) => {
   return result;
 };
 
+const normalizeUrl = (value = '') => {
+  const trimmed = String(value).trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
+
 // Get all links for the logged-in user
 router.get('/', requireAuth, (req, res) => {
   const userLinks = Links.find({ userId: req.user.id });
@@ -24,30 +31,38 @@ router.get('/', requireAuth, (req, res) => {
 
 // Create a new short link
 router.post('/', requireAuth, [
-  body('originalUrl').isURL().withMessage('Valid URL is required')
+  body('originalUrl').trim().notEmpty().withMessage('Valid URL is required')
 ], (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
   const { originalUrl, customSlug, password, expiry, geoTargeting, deviceTargeting } = req.body;
+  const normalizedOriginalUrl = normalizeUrl(originalUrl);
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(normalizedOriginalUrl);
+  } catch (err) {
+    return res.status(400).json({ error: 'Valid URL is required' });
+  }
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    return res.status(400).json({ error: 'Valid URL is required' });
+  }
 
-  let shortCode = customSlug;
-  if (shortCode) {
-    // Check if custom slug is already taken
-    const existing = Links.findOne({ shortCode });
-    if (existing) {
-      return res.status(400).json({ error: 'Custom slug is already in use' });
-    }
-  } else {
-    // Generate unique short code
-    let isUnique = false;
-    while (!isUnique) {
-      shortCode = generateShortId();
-      if (!Links.findOne({ shortCode })) {
-        isUnique = true;
-      }
+  const slug = typeof customSlug === 'string' ? customSlug.trim() : '';
+  if (slug && !/^[a-zA-Z0-9-]{2,50}$/.test(slug)) {
+    return res.status(400).json({ error: 'Custom slug can only include letters, numbers, and hyphens' });
+  }
+
+  // Generate unique ID (6–8 chars). We use 7 chars for compact uniqueness.
+  let uniqueId = '';
+  let isUnique = false;
+  while (!isUnique) {
+    uniqueId = generateShortId(7);
+    if (!Links.findOne({ uniqueId }) && !Links.findOne({ shortCode: uniqueId })) {
+      isUnique = true;
     }
   }
+  const shortCode = slug ? `${slug}/${uniqueId}` : uniqueId;
 
   // Hash password if provided for link protection
   let hashedPassword = null;
@@ -58,7 +73,9 @@ router.post('/', requireAuth, [
 
   const newLink = Links.create({
     userId: req.user.id,
-    originalUrl,
+    originalUrl: normalizedOriginalUrl,
+    slug: slug || null,
+    uniqueId,
     shortCode,
     settings: {
       password: hashedPassword,
