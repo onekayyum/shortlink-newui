@@ -1,7 +1,7 @@
 "use client";
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Link as LinkIcon, Settings, ShieldAlert, LogOut } from 'lucide-react';
+import { LayoutDashboard, Link as LinkIcon, Settings, ShieldAlert, LogOut, BookOpenText } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import clsx from 'clsx';
 
@@ -11,6 +11,7 @@ export default function Sidebar() {
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'API', href: '/api', icon: BookOpenText },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
