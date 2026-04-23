@@ -6,6 +6,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis
 import { Activity, Link2, MousePointerClick, Plus, TrendingUp, MoreHorizontal, Copy, ExternalLink, QrCode } from 'lucide-react';
 import LinkModal from '@/components/LinkModal';
 import { toast } from 'react-hot-toast';
+import { QRCodeCanvas } from 'qrcode.react';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -34,10 +35,53 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  const copyToClipboard = (shortCode: string) => {
-    const url = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:5000'}/${shortCode}`;
+  const getShortPath = (link: any) => link.shortCode || (link.slug ? `${link.slug}/${link.uniqueId}` : link.uniqueId);
+
+  const getShortUrl = (link: any) => `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:5000'}/${getShortPath(link)}`;
+
+  const copyToClipboard = (link: any) => {
+    const url = getShortUrl(link);
     navigator.clipboard.writeText(url);
     toast.success('Copied to clipboard');
+  };
+
+  const downloadQrCode = async (link: any) => {
+    const canvas = document.getElementById(`qr-${link.id}`) as HTMLCanvasElement | null;
+    if (!canvas) {
+      toast.error('QR code not ready yet');
+      return;
+    }
+
+    const downloadBlob = (blob: Blob) => {
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${link.uniqueId || 'short-link'}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    };
+
+    if (canvas.toBlob) {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          toast.error('Failed to generate QR image');
+          return;
+        }
+        downloadBlob(blob);
+      }, 'image/png');
+      return;
+    }
+
+    // Fallback for older browsers
+    const dataUrl = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `${link.uniqueId || 'short-link'}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   if (loading) {
@@ -144,7 +188,7 @@ export default function Dashboard() {
               {links.map((link) => (
                 <tr key={link.id} className="hover:bg-secondary/10 transition-colors group">
                   <td className="p-4">
-                    <div className="font-medium text-primary">{process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:5000'}/{link.shortCode}</div>
+                    <div className="font-medium text-primary">{getShortUrl(link)}</div>
                     <div className="text-xs text-muted-foreground mt-1">{new Date(link.createdAt).toLocaleDateString()}</div>
                   </td>
                   <td className="p-4 max-w-[200px] truncate text-muted-foreground">
@@ -158,15 +202,18 @@ export default function Dashboard() {
                   </td>
                   <td className="p-4">
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => copyToClipboard(link.shortCode)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground" title="Copy">
+                      <button onClick={() => copyToClipboard(link)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground" title="Copy">
                         <Copy size={16} />
                       </button>
-                      <a href={`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:5000'}/${link.shortCode}`} target="_blank" rel="noreferrer" className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground" title="Open">
+                      <a href={getShortUrl(link)} target="_blank" rel="noreferrer" className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground" title="Open">
                         <ExternalLink size={16} />
                       </a>
-                      <button className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground" title="QR Code">
+                      <button onClick={() => downloadQrCode(link)} className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground" title="QR Code">
                         <QrCode size={16} />
                       </button>
+                    </div>
+                    <div className="sr-only">
+                      <QRCodeCanvas id={`qr-${link.id}`} value={getShortUrl(link)} size={512} includeMargin />
                     </div>
                   </td>
                 </tr>

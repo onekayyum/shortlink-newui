@@ -52,6 +52,7 @@ router.get('/overview', requireAuth, (req, res) => {
 // Get analytics for a specific link
 router.get('/:linkId', requireAuth, (req, res) => {
   const { linkId } = req.params;
+  const range = String(req.query.range || '7d');
   const link = Links.findOne({ id: linkId, userId: req.user.id });
 
   if (!link) {
@@ -59,6 +60,9 @@ router.get('/:linkId', requireAuth, (req, res) => {
   }
 
   const clicks = ClickLogs.find({ linkId });
+  const sortedClicks = clicks.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const uniqueClicks = new Set(clicks.map(c => `${c.ip}-${c.device}`)).size;
+  const lastActivity = sortedClicks.length ? sortedClicks[sortedClicks.length - 1].timestamp : null;
 
   // Breakdown by Referrer, Country, Device
   const referrerMap = {};
@@ -71,10 +75,37 @@ router.get('/:linkId', requireAuth, (req, res) => {
     deviceMap[c.device] = (deviceMap[c.device] || 0) + 1;
   });
 
-  const formatMap = (map) => Object.entries(map).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value);
+  const formatMap = (map) => {
+    const total = clicks.length || 1;
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value, percent: Math.round((value / total) * 100) }))
+      .sort((a,b) => b.value - a.value);
+  };
+
+  const rangeMap = {
+    '7d': { days: 7, step: 1 },
+    '30d': { days: 30, step: 1 },
+    '90d': { days: 90, step: 3 },
+    '1y': { days: 365, step: 7 }
+  };
+  const selectedRange = rangeMap[range] || rangeMap['7d'];
+  const now = new Date();
+  const fromDate = new Date(now.getTime() - selectedRange.days * 24 * 60 * 60 * 1000);
+  const rangedClicks = clicks.filter(c => new Date(c.timestamp) >= fromDate);
+  const dailyGraph = [];
+  for (let i = selectedRange.days - 1; i >= 0; i -= selectedRange.step) {
+    const dayStart = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    const dateString = dayStart.toISOString().split('T')[0];
+    const dayClicks = rangedClicks.filter(c => c.timestamp.startsWith(dateString)).length;
+    dailyGraph.push({ name: dateString, clicks: dayClicks });
+  }
 
   res.json({
     totalClicks: clicks.length,
+    uniqueClicks,
+    lastActivity,
+    range,
+    dailyGraph,
     referrers: formatMap(referrerMap),
     countries: formatMap(countryMap),
     devices: formatMap(deviceMap)

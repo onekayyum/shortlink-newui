@@ -5,6 +5,10 @@ const requireAuth = (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
 
   if (!token) {
+    console.warn('[auth][middleware] Missing authorization token', {
+      method: req.method,
+      path: req.originalUrl
+    });
     return res.status(401).json({ error: 'Authentication required' });
   }
 
@@ -13,12 +17,18 @@ const requireAuth = (req, res, next) => {
     const user = Users.findOne({ id: decoded.userId });
 
     if (!user) {
+      console.warn('[auth][middleware] Token user not found', { userId: decoded.userId });
       return res.status(401).json({ error: 'User not found' });
     }
 
     req.user = user;
     next();
   } catch (err) {
+    console.warn('[auth][middleware] Invalid token', {
+      method: req.method,
+      path: req.originalUrl,
+      error: err.message
+    });
     return res.status(401).json({ error: 'Invalid token' });
   }
 };
